@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "banners"
+version = "0.0.1"
+dependencies = []
+requires-python = ">=3.0"
+authors = [
+  {email = "braden.eichmeier.1@us.af.mil"},
+]
+
+description = "Lightweight Pub/Sub library!"
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+keywords = ["egg", "bacon", "sausage", "tomatoes", "Lobster Thermidor"]
+
+
+[project.optional-dependencies]
+s3 = ["s3fs"]
+sql = ["psycopg2"]
+
+[project.urls]
+Repository = "https://github.com/me/spam.git"
+
