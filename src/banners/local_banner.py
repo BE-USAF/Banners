@@ -23,12 +23,14 @@ class LocalBanner(BaseBanner):
         Path(self.root_path).mkdir(exist_ok=True)
 
     def wave(self, topic: str, body: dict = None) -> None:
+        file_name = self._generate_timestamp_string()
         if body is None:
             body = {}
         if "topic" not in body:
             body['topic'] = topic
+        if "banner_timestamp" not in body:
+            body['banner_timestamp'] = file_name
         self._validate_body(body)
-        file_name = self._generate_timestamp_string()
         topic_path = Path(self.root_path)  / topic
         topic_path.mkdir(exist_ok=True)
         file_path = topic_path / (file_name + ".json")
@@ -93,6 +95,8 @@ class LocalBanner(BaseBanner):
             raise ValueError(error_msg + str(num_retrieve))
 
         topic_folder = os.path.join(self.root_path, topic)
+        if not os.path.exists(topic_folder):
+            return []
         topic_files = sorted(os.listdir(topic_folder)[-num_retrieve:])
         out = []
         for file in topic_files:

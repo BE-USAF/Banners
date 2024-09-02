@@ -55,7 +55,6 @@ class BaseBanner(abc.ABC):
     def _generate_timestamp_string(self) -> str:
         return datetime.now().strftime("%Y%m%d-%H%M%S%f")
 
-
     @abc.abstractmethod
     def recall_events(self, topic: str, num_retrieve: int=None):
         raise NotImplementedError

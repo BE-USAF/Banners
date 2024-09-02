@@ -196,3 +196,5 @@ def test_recall_events_errors(loaded_banner, arg_val):
     error_msg = f"Recall number must be a positive integer, input: {arg_val}"
     with pytest.raises(ValueError, match=error_msg):
         loaded_banner.recall_events("test", arg_val)
+
+## TODO: Add test for nonexistant topic. Add test for timestamp in default body
