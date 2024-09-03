@@ -1,9 +1,11 @@
 import abc
+import threading
 from datetime import datetime
 from typing import Callable
 
 class BaseBanner(abc.ABC):
     def __init__(self, **kwargs):
+        # Consider implementing with a singleton, at least for wathed_topics
         self.watched_topics = {}
         self.max_events_in_topic = kwargs.get('max_events_in_topic', 50)
         self.watch_rate = kwargs.get('watch_rate', 5)
@@ -35,8 +37,23 @@ class BaseBanner(abc.ABC):
                     f"Field {k} is wrong type, must be {v.__name__}"
                 )
 
-    @abc.abstractmethod
     def watch(self, topic: str,
+              callback: Callable[dict, None],
+              start_time: str="") -> None:
+        if topic in self.watched_topics:
+            raise ValueError(f"Topic: {topic} already being watched")
+        self.watched_topics[topic] = {
+            "thread": threading.Thread(
+                        target=self._watch_thread,
+                        name=f"banners_watch_{topic}",
+                        args=(topic, callback, start_time),
+                      ),
+            "event": threading.Event()
+        }
+        self.watched_topics[topic]['thread'].start()
+
+    @abc.abstractmethod
+    def _watch_thread(self, topic: str,
               callback: Callable[dict, None],
               start_time: str="") -> None:
         raise NotImplementedError
