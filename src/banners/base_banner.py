@@ -27,7 +27,8 @@ class BaseBanner(abc.ABC):
 
     def _validate_body(self, body: dict) -> bool:
         required_fields = {
-            "topic": str
+            "topic": str,
+            "banner_timestamp": str
         }
         for k, v in required_fields.items():
             if k not in body:
