@@ -1,6 +1,6 @@
 """Tests for the base Banners functionality"""
 
-import os
+import copy
 import threading
 import time
 
@@ -8,41 +8,39 @@ import pytest
 
 from banners import LocalBanner
 
-
-@pytest.fixture(name="banner")
-def fixture_banner(tmp_path):
-    """Generate and cleanup a default banner using LocalBanner"""
-    banner = LocalBanner(root_path=tmp_path)
-    yield banner
-    ## This forces thread deletion.
-    # pylint: disable-next=unnecessary-dunder-call
-    banner.__del__()
-
-@pytest.fixture(name="loaded_banner")
-def fixture_loaded_banner(banner):
-    """Load the default banner with 10 events"""
-    banner.max_events_in_topic = 10
-    for i in range(banner.max_events_in_topic):
-        banner.wave("test", {"event": i})
-    yield banner
-
-def test_validate_body_all_fields(banner):
+def test_validate_body_all_fields(local_banner):
     """Verify validate body"""
-    good_body = {"random": 4, "topic": "test"}
+    good_body = {"random": 4, "topic": "test", "banner_timestamp": "test"}
     # Disabling pylint to test the given function
     # pylint: disable-next=protected-access
-    banner._validate_body(good_body)
+    local_banner._validate_body(good_body)
 
 @pytest.mark.parametrize("body, error_msg", [
-    ({"random": 4}, "Required field topic not found in body"),
+    ({"skip_banner_timestamp": "test"},
+         "Required field banner_timestamp not found in body"),
+    ({"skip_topic": "test"}, "Required field topic not found in body"),
     ({"topic": 4}, "Field topic is wrong type, must be str"),
+    ({"banner_timestamp": 4},
+         "Field banner_timestamp is wrong type, must be str"),
 ])
-def test_validate_body_fail_cases(banner, body, error_msg):
+def test_validate_body_fail_cases(local_banner, body, error_msg):
     """Verify fail cases for validate body"""
+    test = {
+        "topic": "test",
+        "banner_timestamp": "test"
+    }
+    if "topic" in body:
+        test['topic'] = body['topic']
+    if "banner_timestamp" in body:
+        test['banner_timestamp'] = body['banner_timestamp']
+    if "skip_banner_timestamp" in body:
+        test.pop("banner_timestamp")
+    if "skip_topic" in body:
+        test.pop("topic")
     with pytest.raises(ValueError, match=error_msg):
         # Disabling pylint to test the given function
         # pylint: disable-next=protected-access
-        banner._validate_body(body)
+        local_banner._validate_body(test)
 
 
 def test_del_removes_threads():
@@ -62,19 +60,23 @@ def test_del_removes_threads():
     for test_thread in test_threads:
         assert f"banners_watch_{test_thread}" not in threads
 
+
 @pytest.mark.parametrize("body", [(None), ({"data": "value"})])
-def test_wave_(banner, body):
+def test_wave_inputs(banner, body):
     """Verify wave can be used with recall_events"""
+    if body is None:
+        comp_body = {}
+    else:
+        comp_body = copy.deepcopy(body)
     banner.retire("test", 0)
     banner.wave("test", body)
-    waved_banners = os.listdir(os.path.join(banner.root_path, "test"))
+    waved_banners = banner.recall_events("test", 100)
     assert len(waved_banners) == 1
 
-    recalled_body = banner.recall_events("test", 1)
-    if body is None:
-        body = {}
-    body['topic'] = 'test'
-    assert recalled_body[0] == body
+    assert 'topic' in waved_banners[0]
+    assert 'banner_timestamp' in waved_banners[0]
+    if 'data' in comp_body:
+        assert waved_banners[0]['data'] == comp_body['data']
 
 
 def test_wave_auto_retires(banner):
@@ -175,7 +177,7 @@ def test_retire_with_input(loaded_banner, arg_val, expected):
     if arg_val is None:
         loaded.max_events_in_topic = expected
     loaded.retire("test", arg_val)
-    after_recall = len(os.listdir(os.path.join(loaded.root_path, "test")))
+    after_recall = len(loaded.recall_events("test", 1000))
     assert after_recall == expected
 
 
@@ -197,4 +199,6 @@ def test_recall_events_errors(loaded_banner, arg_val):
     with pytest.raises(ValueError, match=error_msg):
         loaded_banner.recall_events("test", arg_val)
 
-## TODO: Add test for nonexistant topic. Add test for timestamp in default body
+def test_recall_events_nonexistant_topic(loaded_banner):
+    """Verify nonexistant topic returns empty list"""
+    assert loaded_banner.recall_events("BAD_VAL", 1) == []
