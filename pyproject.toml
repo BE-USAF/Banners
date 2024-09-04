@@ -19,7 +19,7 @@ keywords = ["egg", "bacon", "sausage", "tomatoes", "Lobster Thermidor"]
 
 [project.optional-dependencies]
 s3 = ["s3fs"]
-sql = ["psycopg2"]
+sql = ["psycopg2", "sqlalchemy"]
 
 [project.urls]
 Repository = "https://github.com/me/spam.git"

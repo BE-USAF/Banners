@@ -6,41 +6,39 @@ import time
 
 import pytest
 
-from banners import LocalBanner
+from banners import LocalBanner, PostgresBanner
 
-def test_validate_body_all_fields(local_banner):
+def test_validate_body_existing_fields(local_banner):
     """Verify validate body"""
     good_body = {"random": 4, "topic": "test", "banner_timestamp": "test"}
     # Disabling pylint to test the given function
     # pylint: disable-next=protected-access
-    local_banner._validate_body(good_body)
+    good_body = local_banner._validate_body(good_body, "test")
 
-@pytest.mark.parametrize("body, error_msg", [
-    ({"skip_banner_timestamp": "test"},
-         "Required field banner_timestamp not found in body"),
-    ({"skip_topic": "test"}, "Required field topic not found in body"),
-    ({"topic": 4}, "Field topic is wrong type, must be str"),
-    ({"banner_timestamp": 4},
-         "Field banner_timestamp is wrong type, must be str"),
-])
-def test_validate_body_fail_cases(local_banner, body, error_msg):
+    assert good_body["random"] == 4
+
+@pytest.mark.parametrize("body", [(None), ({}),])
+def test_validate_body_missing_fields(local_banner, body):
     """Verify fail cases for validate body"""
-    test = {
-        "topic": "test",
-        "banner_timestamp": "test"
-    }
-    if "topic" in body:
-        test['topic'] = body['topic']
-    if "banner_timestamp" in body:
-        test['banner_timestamp'] = body['banner_timestamp']
-    if "skip_banner_timestamp" in body:
-        test.pop("banner_timestamp")
-    if "skip_topic" in body:
-        test.pop("topic")
-    with pytest.raises(ValueError, match=error_msg):
-        # Disabling pylint to test the given function
-        # pylint: disable-next=protected-access
-        local_banner._validate_body(test)
+    # pylint: disable-next=protected-access
+    body = local_banner._validate_body(body, "test")
+    assert "topic" in body
+    assert body["topic"] == "test"
+    assert "banner_timestamp" in body
+
+def test_validate_body_timestamp(local_banner):
+    """Verify fail cases for validate body"""
+    ## Disabling these because we're testing the functions
+    # pylint: disable-next=protected-access
+    pre_stamp = local_banner._generate_timestamp_string()
+    # pylint: disable-next=protected-access
+    body = local_banner._validate_body({}, "test")
+    # pylint: disable-next=protected-access
+    post_stamp = local_banner._generate_timestamp_string()
+
+    assert "banner_timestamp" in body
+    assert body["banner_timestamp"] < post_stamp
+    assert body["banner_timestamp"] > pre_stamp
 
 
 def test_del_removes_threads():
@@ -99,6 +97,11 @@ def test_watch_existing_topic(banner):
 
 def test_watch_callback_called(banner):
     """Verify watch hits the supplied callback"""
+
+    ## Skip PostgresBanner, because the SQL connection doesn't work well
+    ## with how the fixtures copies the object
+    if isinstance(banner, PostgresBanner):
+        return
     ## Only using this global to modify within the nested function.
     # pylint: disable-next=global-variable-undefined
     global TEST_CALLBACK_COUNTER
@@ -112,7 +115,7 @@ def test_watch_callback_called(banner):
     banner.watch("test", test_cb)
     time.sleep(0.1)
     banner.wave("test")
-    time.sleep(0.5)
+    time.sleep(banner.watch_rate+0.1)
     assert TEST_CALLBACK_COUNTER == 1
 
 
@@ -124,13 +127,22 @@ def test_watch_spawns_thread(banner):
     banner.watch_rate = 0.05
     banner.watch("test", lambda a: None)
 
+    if isinstance(banner, PostgresBanner):
+        thread_name = "banners_watch_sql"
+    else:
+        thread_name = "banners_watch_test"
+
     new_threads = [t.name for t in threading.enumerate()]
-    assert "banners_watch_test" in new_threads
+    assert thread_name in new_threads
 
 
 @pytest.mark.parametrize("watch_rate", [(0.1), (0.5)])
 def test_watch_sleeps(banner, watch_rate):
     """Verify the watch_rate changes the cycle time"""
+
+    # Skip if postgres banner because sleep doesn't apply
+    if isinstance(banner, PostgresBanner):
+        return
     ## Only using this global to modify within the nested function.
     # pylint: disable-next=global-variable-undefined
     global end_time
