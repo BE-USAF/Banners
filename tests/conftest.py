@@ -1,3 +1,5 @@
+"""Fixtures common for the BaseBanner validation"""
+
 import random
 
 import pytest
@@ -14,6 +16,7 @@ def fixture_local_banner(tmp_path):
     ## This forces thread deletion.
     # pylint: disable-next=unnecessary-dunder-call
     banner.__del__()
+
 
 @pytest.fixture(name="loaded_banner")
 def fixture_loaded_banner(banner):
@@ -48,4 +51,5 @@ def fixture_s3_banner(s3_bucket):
 
 @pytest.fixture(name="banner", params=['local_banner', 's3_banner'])
 def fixture_banner(request):
+    """Parameterize the inherited banner tests"""
     return request.getfixturevalue(request.param)

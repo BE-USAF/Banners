@@ -1,3 +1,5 @@
+"""Tests for the S3Banners."""
+
 import random
 
 import pytest
@@ -18,4 +20,5 @@ def fixture_new_s3_bucket():
     s3.rm(bucket_name, recursive=True)
 
 def test_s3_when_bucket_not_exist(new_s3_bucket):
-    banner = S3Banner(root_path=new_s3_bucket)
+    """Test that the banner class creates a new bucket"""
+    S3Banner(root_path=new_s3_bucket)

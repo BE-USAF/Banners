@@ -1,13 +1,24 @@
+"""Implementation of LocalBanner"""
+
 import json
 import os
 import tempfile
 from pathlib import Path
+from typing import Callable
 
 from .base_banner import BaseBanner
 
 
 class LocalBanner(BaseBanner):
+    """Banner implementation that uses a local filesystem"""
     def __init__(self, **kwargs):
+        """Initializer for LocalBanner.
+
+        Parameters
+        ----------
+        **root_path: str (default=banners)
+            The folder path to look for banner events
+        """
         # Get root_path from 1) Kwarg, 2) Env, 3) default
         super().__init__(**kwargs)
         self.root_path = kwargs.get(
@@ -19,6 +30,15 @@ class LocalBanner(BaseBanner):
         Path(self.root_path).mkdir(exist_ok=True)
 
     def wave(self, topic: str, body: dict = None) -> None:
+        """Create a new event in a given topic.
+
+        Parameters
+        ----------
+        topic: str
+            Topic under which to publish the new event.
+        body: dict
+            Information to publish to the topic.
+        """
         file_name = self._generate_timestamp_string()
         if body is None:
             body = {}
@@ -33,7 +53,20 @@ class LocalBanner(BaseBanner):
         file_path.write_text(json.dumps(body))
         self.retire(topic)
 
-    def _watch_thread(self, topic, callback, start_time):
+    def _watch_thread(self, topic: str,
+              callback: Callable[dict, None],
+              start_time: str="") -> None:
+        """Look for events by ls'ing the topic directory
+
+        Parameters
+        ----------
+        topic: str
+            Topic to watch.
+        callback: Callable[dict, None]:
+            Callback function to execute when new data is available.
+        start_time: str (default="")
+            Timestamp to ignore previous events
+        """
         topic_folder = os.path.join(self.root_path, topic)
         exit_event = self.watched_topics[topic]['event']
 
@@ -51,10 +84,20 @@ class LocalBanner(BaseBanner):
                 start_time = Path(file).stem # Update start time
 
                 # Load json into callback
-                with open(os.path.join(topic_folder, file)) as f:
+                file_path = os.path.join(topic_folder, file)
+                with open(file_path, encoding="utf-8") as f:
                     callback(json.load(f))
 
     def retire(self, topic: str, num_keep: int=None) -> None:
+        """Delete old events in a given topic.
+
+        Parameters
+        ----------
+        topic: str
+            Topic to clean up.
+        num_keep: int (default=10)
+            Number of events to keep in the topic
+        """
         if num_keep is None:
             num_keep = self.max_events_in_topic
         if num_keep < 0: # Do not delete if num_keep is negative
@@ -68,6 +111,18 @@ class LocalBanner(BaseBanner):
             (Path(topic_folder) / file).unlink()
 
     def recall_events(self, topic: str, num_retrieve: int=None):
+        """Get the most recent N events in the topic.
+
+        Parameters
+        ----------
+        topic: str
+            Topic to recall events.
+        num_retrieve: int (default=None)
+            Number of events to retrieve. None returns max_events_in_topic
+        Returns
+        -------
+        A list of events
+        """
         if num_retrieve is None:
             num_retrieve = self.max_events_in_topic
 
@@ -81,6 +136,7 @@ class LocalBanner(BaseBanner):
         topic_files = sorted(os.listdir(topic_folder)[-num_retrieve:])
         out = []
         for file in topic_files:
-            with open(os.path.join(topic_folder, file)) as f:
+            file_path = os.path.join(topic_folder, file)
+            with open(file_path, encoding="utf-8") as f:
                 out.append(json.load(f))
         return out

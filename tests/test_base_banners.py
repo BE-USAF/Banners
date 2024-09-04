@@ -43,7 +43,7 @@ def test_validate_body_fail_cases(local_banner, body, error_msg):
         local_banner._validate_body(test)
 
 
-def test_del_removes_threads(local_banner):
+def test_del_removes_threads():
     """Verify __del__ removes all watch threads"""
     banner = LocalBanner()
     banner.watch_rate = 0.05
