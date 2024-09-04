@@ -15,18 +15,10 @@ class S3Banner(BaseBanner):
             "root_path",
             os.environ.get("root_path", "banners")
         )
-        if all(k in kwargs for k in ("key","secret","endpoint")):
-            self.s3 = s3fs.S3FileSystem(
-              key=kwargs['key'],
-              secret=kwargs['secret'],
-              endpoint_url=kwargs['endpoint']
-            )
-        elif "S3_ENDPOINT" in os.environ:
-            self.s3 = s3fs.S3FileSystem(
-                client_kwargs={"endpoint_url": os.environ["S3_ENDPOINT"]}
-            )
-        else:
-            self.s3 = s3fs.S3FileSystem()
+        self.s3 = s3fs.S3FileSystem(
+            client_kwargs={"endpoint_url": os.environ["S3_ENDPOINT"]}
+        )
+
         if not self.s3.exists(self.root_path):
             self.s3.mkdir(self.root_path, create_parents=True)
 
@@ -40,7 +32,7 @@ class S3Banner(BaseBanner):
             body['banner_timestamp'] = file_name
         self._validate_body(body)
         topic_path = Path(self.root_path)  / topic
-        if not self.s3.exists(self.root_path):
+        if not self.s3.exists(topic_path):
             self.s3.mkdir(topic_path)
         file_path = topic_path / (file_name + ".json")
         with self.s3.open(file_path, "wt") as f:

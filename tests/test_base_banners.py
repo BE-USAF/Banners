@@ -1,14 +1,12 @@
 """Tests for the base Banners functionality"""
 
 import copy
-import os
 import threading
 import time
 
 import pytest
 
 from banners import LocalBanner
-from .conftest import fixture_banner, fixture_loaded_banner
 
 def test_validate_body_all_fields(local_banner):
     """Verify validate body"""
@@ -64,7 +62,7 @@ def test_del_removes_threads(local_banner):
 
 
 @pytest.mark.parametrize("body", [(None), ({"data": "value"})])
-def test_wave_(banner, body):
+def test_wave_inputs(banner, body):
     """Verify wave can be used with recall_events"""
     if body is None:
         comp_body = {}

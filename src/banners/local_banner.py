@@ -1,9 +1,7 @@
 import json
 import os
 import tempfile
-import threading
 from pathlib import Path
-from typing import Callable
 
 from .base_banner import BaseBanner
 
