@@ -8,39 +8,35 @@ import pytest
 
 from banners import LocalBanner
 
-def test_validate_body_all_fields(local_banner):
+def test_validate_body_existing_fields(local_banner):
     """Verify validate body"""
     good_body = {"random": 4, "topic": "test", "banner_timestamp": "test"}
     # Disabling pylint to test the given function
     # pylint: disable-next=protected-access
-    local_banner._validate_body(good_body)
+    good_body = local_banner._validate_body(good_body, "test")
 
-@pytest.mark.parametrize("body, error_msg", [
-    ({"skip_banner_timestamp": "test"},
-         "Required field banner_timestamp not found in body"),
-    ({"skip_topic": "test"}, "Required field topic not found in body"),
-    ({"topic": 4}, "Field topic is wrong type, must be str"),
-    ({"banner_timestamp": 4},
-         "Field banner_timestamp is wrong type, must be str"),
+    assert good_body["random"] == 4
+
+@pytest.mark.parametrize("body, expected", [
+    (None, {"topic", "test"}),
+    ({}, {"topic", "test"}),
 ])
-def test_validate_body_fail_cases(local_banner, body, error_msg):
+def test_validate_body_missing_fields(local_banner, body, expected):
     """Verify fail cases for validate body"""
-    test = {
-        "topic": "test",
-        "banner_timestamp": "test"
-    }
-    if "topic" in body:
-        test['topic'] = body['topic']
-    if "banner_timestamp" in body:
-        test['banner_timestamp'] = body['banner_timestamp']
-    if "skip_banner_timestamp" in body:
-        test.pop("banner_timestamp")
-    if "skip_topic" in body:
-        test.pop("topic")
-    with pytest.raises(ValueError, match=error_msg):
-        # Disabling pylint to test the given function
-        # pylint: disable-next=protected-access
-        local_banner._validate_body(test)
+    body = local_banner._validate_body(body, "test")
+    assert "topic" in body
+    assert body["topic"] == "test"
+    assert "banner_timestamp" in body
+
+def test_validate_body_timestamp(local_banner):
+    """Verify fail cases for validate body"""
+    pre_stamp = local_banner._generate_timestamp_string()
+    body = local_banner._validate_body({}, "test")
+    post_stamp = local_banner._generate_timestamp_string()
+
+    assert "banner_timestamp" in body
+    assert body["banner_timestamp"] < post_stamp
+    assert body["banner_timestamp"] > pre_stamp
 
 
 def test_del_removes_threads():

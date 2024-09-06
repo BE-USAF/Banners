@@ -39,18 +39,14 @@ class LocalBanner(BaseBanner):
         body: dict
             Information to publish to the topic.
         """
-        file_name = self._generate_timestamp_string()
-        if body is None:
-            body = {}
-        if "topic" not in body:
-            body['topic'] = topic
-        if "banner_timestamp" not in body:
-            body['banner_timestamp'] = file_name
-        self._validate_body(body)
+        body = self._validate_body(body, topic)
+
         topic_path = Path(self.root_path)  / topic
         topic_path.mkdir(exist_ok=True)
+        file_name = self._generate_timestamp_string()
         file_path = topic_path / (file_name + ".json")
         file_path.write_text(json.dumps(body))
+
         self.retire(topic)
 
     def _watch_thread(self, topic: str,

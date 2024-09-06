@@ -47,7 +47,7 @@ class BaseBanner(abc.ABC):
         """
         raise NotImplementedError
 
-    def _validate_body(self, body: dict):
+    def _validate_body(self, body: dict, topic: str):
         """Validate new event body.
 
         Enforce toipc and banner_timestamp are present.
@@ -56,18 +56,16 @@ class BaseBanner(abc.ABC):
         ----------
         body: dict
             Information to publish to the topic.
+        topic: str
+            Topic being published to
         """
-        required_fields = {
-            "topic": str,
-            "banner_timestamp": str
-        }
-        for k, v in required_fields.items():
-            if k not in body:
-                raise ValueError(f"Required field {k} not found in body")
-            if not isinstance(body[k], v):
-                raise ValueError(
-                    f"Field {k} is wrong type, must be {v.__name__}"
-                )
+        if body is None:
+            body = {}
+        if "topic" not in body:
+            body['topic'] = topic
+        if "banner_timestamp" not in body:
+            body['banner_timestamp'] = self._generate_timestamp_string()
+        return body
 
     def watch(self, topic: str,
               callback: Callable[dict, None],

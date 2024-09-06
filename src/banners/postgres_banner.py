@@ -25,12 +25,14 @@ class PostgresBanner(BaseBanner):
             The folder path to look for banner events
         """
         super().__init__(**kwargs)
+        # Parameterize this connection
         self.wave_conn = psycopg2.connect(
             dbname="postgres",
             user="postgres",
             password="postgres",
             host="jhub-postgresql"
         )
+        ## Consider using connection pool
         self.wave_conn.set_isolation_level(
             psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
         )
@@ -45,14 +47,7 @@ class PostgresBanner(BaseBanner):
         body: dict
             Information to publish to the topic.
         """
-        file_name = self._generate_timestamp_string()
-        if body is None:
-            body = {}
-        if "topic" not in body:
-            body['topic'] = topic
-        if "banner_timestamp" not in body:
-            body['banner_timestamp'] = file_name
-        self._validate_body(body)
+        body = self._validate_body(body, topic)
 
         curs = self.wave_conn.cursor()
         curs.execute(
