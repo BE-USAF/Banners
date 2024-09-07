@@ -48,7 +48,7 @@ def fixture_sql_table():
     banner = PostgresBanner(table_name=table_name)
     ## Disabling so we can cleanup
     # pylint: disable-next=protected-access
-    banner.sql_banner.__table__.drop(banner._engine)
+    banner.banner_event.__table__.drop(banner._engine)
 
 
 @pytest.fixture(name="sql_banner")

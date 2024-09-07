@@ -42,13 +42,16 @@ class PostgresBanner(BaseBanner):
             host="jhub-postgresql",
             database="postgres",
         ))
-        self.sql_banner = self._create_table(self.table_name)
+        self.banner_event = self._create_table(self.table_name)
 
     def _create_table(self, table_name):
+        # pylint: disable-next=too-few-public-methods
         class Base(DeclarativeBase):
-            pass
+            """SQL Alchemy base class to create tables."""
 
-        class SQLBanner(Base):
+        # pylint: disable-next=too-few-public-methods
+        class BannerEvent(Base):
+            """SQL Alchemy model."""
             __tablename__ = table_name
 
             id: Mapped[int] = mapped_column(primary_key=True)
@@ -61,12 +64,12 @@ class PostgresBanner(BaseBanner):
                         f"timestamp={self.timestamp!r}, body={self.body!r})")
 
         Base.metadata.create_all(self._engine)
-        return SQLBanner
+        return BannerEvent
 
     def _get_event_by_id(self, event_id: int):
         with Session(self._engine) as session:
-            res = session.query(self.sql_banner) \
-                         .where(self.sql_banner.id == event_id)[0]
+            res = session.query(self.banner_event) \
+                         .where(self.banner_event.id == event_id)[0]
         return  self._convert_sql_object_to_dict(res)
 
     def _convert_sql_object_to_dict(self, obj):
@@ -81,7 +84,7 @@ class PostgresBanner(BaseBanner):
         timestamp = body.pop("banner_timestamp")
         topic = body.pop("topic")
         with Session(self._engine) as session:
-            event = self.sql_banner(
+            event = self.banner_event(
                 topic=topic,
                 timestamp=timestamp,
                 body=json.dumps(body)
@@ -156,14 +159,14 @@ class PostgresBanner(BaseBanner):
             return
 
         with Session(self._engine) as session:
-            total_rows = session.query(self.sql_banner).count()
+            total_rows = session.query(self.banner_event).count()
 
             if num_keep >= total_rows:
                 return
 
-            res = session.query(self.sql_banner) \
-                   .where(self.sql_banner.topic == topic) \
-                   .order_by(self.sql_banner.timestamp) \
+            res = session.query(self.banner_event) \
+                   .where(self.banner_event.topic == topic) \
+                   .order_by(self.banner_event.timestamp) \
                    .limit(total_rows-num_keep)[:]
             for obj in res:
                 session.delete(obj)
@@ -185,9 +188,9 @@ class PostgresBanner(BaseBanner):
         num_retrieve = self._verify_recall_num_retrieve(num_retrieve)
 
         with Session(self._engine) as session:
-            results = session.query(self.sql_banner) \
-                   .where(self.sql_banner.topic == topic) \
-                   .order_by(self.sql_banner.timestamp.desc()) \
+            results = session.query(self.banner_event) \
+                   .where(self.banner_event.topic == topic) \
+                   .order_by(self.banner_event.timestamp.desc()) \
                    .limit(num_retrieve)[::-1]
         return [
             self._convert_sql_object_to_dict(res)
