@@ -126,12 +126,7 @@ class S3Banner(BaseBanner):
         -------
         A list of events
         """
-        if num_retrieve is None:
-            num_retrieve = self.max_events_in_topic
-
-        if num_retrieve < 1:
-            error_msg = "Recall number must be a positive integer, input: "
-            raise ValueError(error_msg + str(num_retrieve))
+        num_retrieve = self._verify_recall_num_retrieve(num_retrieve)
 
         topic_folder = "/".join([self.root_path, topic])
         if not self.s3.exists(topic_folder):

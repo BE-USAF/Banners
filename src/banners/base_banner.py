@@ -165,3 +165,11 @@ class BaseBanner(abc.ABC):
         A list of events
         """
         raise NotImplementedError
+
+    def _verify_recall_num_retrieve(self, num_retrieve: int=None):
+        if num_retrieve is None:
+            num_retrieve = self.max_events_in_topic
+        if num_retrieve < 1:
+            error_msg = "Recall number must be a positive integer, input: "
+            raise ValueError(error_msg + str(num_retrieve))
+        return num_retrieve
