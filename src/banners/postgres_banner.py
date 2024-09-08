@@ -45,6 +45,17 @@ class PostgresBanner(BaseBanner):
         self.banner_event = self._create_table(self.table_name)
 
     def _create_table(self, table_name):
+        """Create SQL Alchemy ORM tables and objects.
+
+        Parameters
+        ----------
+        table_name: str
+            The name for the table.
+
+        Returns
+        ----------
+        The SQL Alchemy ORM object class.
+        """
         # pylint: disable-next=too-few-public-methods
         class Base(DeclarativeBase):
             """SQL Alchemy base class to create tables."""
@@ -67,12 +78,36 @@ class PostgresBanner(BaseBanner):
         return BannerEvent
 
     def _get_event_by_id(self, event_id: int):
+        """Query an event by id.
+
+        Parameters
+        ----------
+        event_id: int
+            ID to query.
+
+        Returns
+        ----------
+        The SQL Alchemy ORM object of the saved event.
+        """
         with Session(self._engine) as session:
             res = session.query(self.banner_event) \
-                         .where(self.banner_event.id == event_id)[0]
-        return  self._convert_sql_object_to_dict(res)
+                         .where(self.banner_event.id == event_id)
+        if res.count() == 0:
+            raise ValueError(f"Event ID {event_id} not found")
+        return  self._convert_sql_object_to_dict(res[0])
 
     def _convert_sql_object_to_dict(self, obj):
+        """Convert SQLAlchemy ORM object to dictionary.
+
+        Parameters
+        ----------
+        obj: BannerEvent
+            ORM Object to convert.
+
+        Returns
+        ----------
+        A dictionary of the event.
+        """
         return  {
                 'topic': obj.topic,
                 'banner_timestamp': obj.timestamp,
@@ -80,6 +115,17 @@ class PostgresBanner(BaseBanner):
         }
 
     def _add_event_to_table(self, body):
+        """Add event to the SQL table.
+
+        Parameters
+        ----------
+        body: dict
+            Information to save.
+
+        Returns
+        ----------
+        The id of the saved event.
+        """
         ## Add to sql table
         timestamp = body.pop("banner_timestamp")
         topic = body.pop("topic")
