@@ -5,7 +5,6 @@ import json
 import select
 from typing import Callable, Optional
 
-import psycopg2
 from psycopg2 import sql
 from sqlalchemy import URL, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
@@ -25,16 +24,6 @@ class PostgresBanner(BaseBanner):
         super().__init__(**kwargs)
         self.table_name = kwargs.get("table_name", "sql_banner")
         # Parameterize this connection
-        self.wave_conn = psycopg2.connect(
-            dbname="postgres",
-            user="postgres",
-            password="postgres",
-            host="jhub-postgresql"
-        )
-        ## Consider using connection pool
-        self.wave_conn.set_isolation_level(
-            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
-        )
         self._engine = create_engine(URL.create(
             drivername="postgresql",
             username="postgres",
@@ -43,6 +32,11 @@ class PostgresBanner(BaseBanner):
             database="postgres",
         ))
         self.banner_event = self._create_table(self.table_name)
+
+    def __del__(self):
+        """Destructor that kills DB connection."""
+        self._engine.dispose()
+        super().__del__()
 
     def _create_table(self, table_name):
         """Create SQL Alchemy ORM tables and objects.
@@ -152,12 +146,18 @@ class PostgresBanner(BaseBanner):
         """
         body = self._validate_body(body, topic)
 
-        curs = self.wave_conn.cursor()
         event_id = self._add_event_to_table(copy.deepcopy(body))
-        curs.execute(
-            sql.SQL("NOTIFY {}, %s;").format(sql.Identifier(topic)),
-            (str(event_id),)
-        )
+
+        raw_connection = self._engine.connect().connection
+        try:
+            with raw_connection.cursor() as curs:
+                curs.execute(
+                    sql.SQL("NOTIFY {}, %s;").format(sql.Identifier(topic)),
+                    (str(event_id),)
+                )
+            raw_connection.commit()
+        finally:
+            raw_connection.close()
         self.retire(topic)
 
     def _watch_thread(self, topic: str,
@@ -176,18 +176,26 @@ class PostgresBanner(BaseBanner):
         """
         exit_event = self.watched_topics[topic]['event']
 
-        curs = self.wave_conn.cursor()
-        curs.execute(sql.SQL("LISTEN {};").format(sql.Identifier(topic)))
-
-        ## Loop until the thread is removed, or the event is thrown
-        while topic in self.watched_topics and not exit_event.is_set():
-            empty = ([],[],[])
-            if select.select([self.wave_conn],[],[],self.watch_rate) == empty:
-                continue
-            self.wave_conn.poll()
-            while self.wave_conn.notifies:
-                notify = self.wave_conn.notifies.pop(0)
-                callback(self._get_event_by_id(notify.payload))
+        raw_connection = self._engine.connect().connection
+        try:
+            with raw_connection.cursor() as curs:
+                curs.execute(
+                    sql.SQL("LISTEN {};"
+                           ).format(sql.Identifier(topic)))
+            raw_connection.commit()
+            ## Loop until the thread is removed, or the event is thrown
+            while topic in self.watched_topics and not exit_event.is_set():
+                empty = ([],[],[])
+                if select.select(
+                    [raw_connection],[],[],self.watch_rate
+                ) == empty:
+                    continue
+                raw_connection.poll()
+                while raw_connection.notifies:
+                    notify = raw_connection.notifies.pop(0)
+                    callback(self._get_event_by_id(notify.payload))
+        finally:
+            raw_connection.close()
 
     def retire(self, topic: str, num_keep: int=None) -> None:
         """Delete old events in a given topic.
