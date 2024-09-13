@@ -5,9 +5,9 @@ import json
 import select
 from typing import Callable, Optional
 
-from psycopg2 import sql
-from sqlalchemy import URL, create_engine
+from sqlalchemy import URL, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
+
 
 from .base_banner import BaseBanner
 
@@ -35,8 +35,8 @@ class PostgresBanner(BaseBanner):
 
     def __del__(self):
         """Destructor that kills DB connection."""
-        self._engine.dispose()
         super().__del__()
+        self._engine.dispose()
 
     def _create_table(self, table_name):
         """Create SQL Alchemy ORM tables and objects.
@@ -64,10 +64,6 @@ class PostgresBanner(BaseBanner):
             timestamp: Mapped[str]
             body: Mapped[Optional[str]]
 
-            def __repr__(self) -> str:
-                return (f"SQLBanner(topic={self.topic!r}, "
-                        f"timestamp={self.timestamp!r}, body={self.body!r})")
-
         Base.metadata.create_all(self._engine)
         return BannerEvent
 
@@ -83,12 +79,14 @@ class PostgresBanner(BaseBanner):
         ----------
         The SQL Alchemy ORM object of the saved event.
         """
-        with Session(self._engine) as session:
-            res = session.query(self.banner_event) \
-                         .where(self.banner_event.id == event_id)
-        if res.count() == 0:
-            raise ValueError(f"Event ID {event_id} not found")
-        return  self._convert_sql_object_to_dict(res[0])
+        with self._engine.connect() as connection:
+            with Session(bind=connection) as session:
+                res = session.query(self.banner_event) \
+                             .where(self.banner_event.id == event_id)
+                if res.count() == 0:
+                    raise ValueError(f"Event ID {event_id} not found")
+                out = self._convert_sql_object_to_dict(res[0])
+        return  out
 
     def _convert_sql_object_to_dict(self, obj):
         """Convert SQLAlchemy ORM object to dictionary.
@@ -123,15 +121,17 @@ class PostgresBanner(BaseBanner):
         ## Add to sql table
         timestamp = body.pop("banner_timestamp")
         topic = body.pop("topic")
-        with Session(self._engine) as session:
-            event = self.banner_event(
-                topic=topic,
-                timestamp=timestamp,
-                body=json.dumps(body)
-            )
-            session.add(event)
-            session.commit()
-            event_id = event.id
+        with self._engine.connect() as connection:
+            with Session(bind=connection) as session:
+                event = self.banner_event(
+                    topic=topic,
+                    timestamp=timestamp,
+                    body=json.dumps(body)
+                )
+                session.add(event)
+                session.commit()
+                event_id = event.id
+
         return event_id
 
     def wave(self, topic: str, body: dict = None) -> None:
@@ -148,16 +148,11 @@ class PostgresBanner(BaseBanner):
 
         event_id = self._add_event_to_table(copy.deepcopy(body))
 
-        raw_connection = self._engine.connect().connection
-        try:
-            with raw_connection.cursor() as curs:
-                curs.execute(
-                    sql.SQL("NOTIFY {}, %s;").format(sql.Identifier(topic)),
-                    (str(event_id),)
-                )
-            raw_connection.commit()
-        finally:
-            raw_connection.close()
+        with self._engine.connect() as con:
+            con.execute(
+                text(f"NOTIFY {topic}, '{event_id}';")
+            )
+            con.commit()
         self.retire(topic)
 
     def _watch_thread(self, topic: str,
@@ -176,26 +171,20 @@ class PostgresBanner(BaseBanner):
         """
         exit_event = self.watched_topics[topic]['event']
 
-        raw_connection = self._engine.connect().connection
-        try:
-            with raw_connection.cursor() as curs:
-                curs.execute(
-                    sql.SQL("LISTEN {};"
-                           ).format(sql.Identifier(topic)))
-            raw_connection.commit()
-            ## Loop until the thread is removed, or the event is thrown
-            while topic in self.watched_topics and not exit_event.is_set():
-                empty = ([],[],[])
-                if select.select(
-                    [raw_connection],[],[],self.watch_rate
+        with self._engine.connect() as con:
+            con.execute(text(f"LISTEN {topic};"))
+            con.commit()
+
+        while topic in self.watched_topics and not exit_event.is_set():
+            empty = ([],[],[])
+            with self._engine.connect() as conn:
+                if not select.select(
+                    [conn.connection],[],[],self.watch_rate
                 ) == empty:
-                    continue
-                raw_connection.poll()
-                while raw_connection.notifies:
-                    notify = raw_connection.notifies.pop(0)
-                    callback(self._get_event_by_id(notify.payload))
-        finally:
-            raw_connection.close()
+                    conn.connection.poll()
+                    while conn.connection.notifies:
+                        notify = conn.connection.notifies.pop(0)
+                        callback(self._get_event_by_id(notify.payload))
 
     def retire(self, topic: str, num_keep: int=None) -> None:
         """Delete old events in a given topic.
@@ -212,19 +201,20 @@ class PostgresBanner(BaseBanner):
         if num_keep < 0:
             return
 
-        with Session(self._engine) as session:
-            total_rows = session.query(self.banner_event).count()
+        with self._engine.connect() as connection:
+            with Session(bind=connection) as session:
+                total_rows = session.query(self.banner_event).count()
 
-            if num_keep >= total_rows:
-                return
+                if num_keep >= total_rows:
+                    return
 
-            res = session.query(self.banner_event) \
-                   .where(self.banner_event.topic == topic) \
-                   .order_by(self.banner_event.timestamp) \
-                   .limit(total_rows-num_keep)[:]
-            for obj in res:
-                session.delete(obj)
-            session.commit()
+                res = session.query(self.banner_event) \
+                       .where(self.banner_event.topic == topic) \
+                       .order_by(self.banner_event.timestamp) \
+                       .limit(total_rows-num_keep)[:]
+                for obj in res:
+                    session.delete(obj)
+                session.commit()
 
     def recall_events(self, topic: str, num_retrieve: int=None):
         """Get the most recent N events in the topic.
@@ -241,11 +231,13 @@ class PostgresBanner(BaseBanner):
         """
         num_retrieve = self._verify_recall_num_retrieve(num_retrieve)
 
-        with Session(self._engine) as session:
-            results = session.query(self.banner_event) \
-                   .where(self.banner_event.topic == topic) \
-                   .order_by(self.banner_event.timestamp.desc()) \
-                   .limit(num_retrieve)[::-1]
+        with self._engine.connect() as connection:
+            with Session(bind=connection) as session:
+                results = session.query(self.banner_event) \
+                       .where(self.banner_event.topic == topic) \
+                       .order_by(self.banner_event.timestamp.desc()) \
+                       .limit(num_retrieve)[::-1]
+
         return [
             self._convert_sql_object_to_dict(res)
             for res in results

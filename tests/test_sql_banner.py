@@ -33,6 +33,13 @@ def test_sql_when_table_not_exist(sql_table):
     assert sql_table in all_tables
 
 
+def test_sql_get_event_bad_id(sql_banner):
+    """Verify get event throws error with bad id"""
+    error_msg = "Event ID 0 not found"
+    with pytest.raises(ValueError, match=error_msg):
+        sql_banner._get_event_by_id(0)
+
+
 def test_sql_watch_callback_called(sql_banner, second_sql_banner):
     """Verify watch hits the supplied callback"""
     ## Only using this global to modify within the nested function.
@@ -44,12 +51,11 @@ def test_sql_watch_callback_called(sql_banner, second_sql_banner):
         # pylint: disable-next=global-variable-undefined
         global TEST_CALLBACK_COUNTER
         TEST_CALLBACK_COUNTER += 1
-    wave_banner = sql_banner
-    watch_banner = second_sql_banner
-    watch_banner.watch_rate = 0.1
+    second_sql_banner.watch_rate = 0.1
 
-    watch_banner.watch("test", test_cb)
+    second_sql_banner.watch("test", test_cb)
     time.sleep(0.1)
-    wave_banner.wave("test")
-    time.sleep(watch_banner.watch_rate)
+    sql_banner.wave("test")
+    time.sleep(second_sql_banner.watch_rate+0.1)
     assert TEST_CALLBACK_COUNTER == 1
+    second_sql_banner.ignore("test")
