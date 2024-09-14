@@ -7,6 +7,7 @@ import select
 import threading
 from typing import Callable, Optional
 
+from psycopg2 import sql
 from sqlalchemy import URL, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, Session
 
@@ -195,8 +196,13 @@ class PostgresBanner(BaseBanner):
         event_id = self._add_event_to_table(copy.deepcopy(body))
 
         with self._engine.connect() as con:
+            query = text(sql.SQL(
+                "NOTIFY {}, :event_id;").format(
+                sql.Identifier(topic)
+            ).as_string(con.connection.cursor()))
             con.execute(
-                text(f"NOTIFY {topic}, '{event_id}';")
+                query
+                .bindparams(event_id=str(event_id)),
             )
             con.commit()
         self.retire(topic)
@@ -231,7 +237,13 @@ class PostgresBanner(BaseBanner):
             self._thread.start()
 
         with self._engine.connect() as con:
-            con.execute(text(f"LISTEN {topic};"))
+            query = text(sql.SQL(
+                "LISTEN {};").format(
+                sql.Identifier(topic)
+            ).as_string(con.connection.cursor()))
+            con.execute(
+                query
+            )
             con.commit()
 
     def _watch_thread(self, topic: str,
