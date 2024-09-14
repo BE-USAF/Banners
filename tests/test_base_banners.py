@@ -127,8 +127,13 @@ def test_watch_spawns_thread(banner):
     banner.watch_rate = 0.05
     banner.watch("test", lambda a: None)
 
+    if isinstance(banner, PostgresBanner):
+        thread_name = "banners_watch_sql"
+    else:
+        thread_name = "banners_watch_test"
+
     new_threads = [t.name for t in threading.enumerate()]
-    assert "banners_watch_test" in new_threads
+    assert thread_name in new_threads
 
 
 @pytest.mark.parametrize("watch_rate", [(0.1), (0.5)])

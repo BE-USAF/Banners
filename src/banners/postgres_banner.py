@@ -4,6 +4,7 @@ import copy
 import json
 import os
 import select
+import threading
 from typing import Callable, Optional
 
 from sqlalchemy import URL, create_engine, text
@@ -25,6 +26,9 @@ class PostgresBanner(BaseBanner):
         super().__init__(**kwargs)
         self.table_name = kwargs.get("table_name", "sql_banner")
         self._engine = None
+        self._exit_event = threading.Event()
+        self._exit_event.set()
+        self._thread = None
         self._create_engine(**kwargs)
 
         self.banner_event = self._create_table(self.table_name)
@@ -32,6 +36,10 @@ class PostgresBanner(BaseBanner):
     def __del__(self):
         """Destructor that kills DB connection."""
         super().__del__()
+        if not self._exit_event.is_set():
+            self._exit_event.set()
+        if self._thread is not None:
+            self._thread.join()
         if self._engine:
             self._engine.dispose()
 
@@ -193,6 +201,39 @@ class PostgresBanner(BaseBanner):
             con.commit()
         self.retire(topic)
 
+    def watch(self, topic: str,
+              callback: Callable[dict, None],
+              start_time: str="") -> None:
+        """Subscribe to a new topic.
+
+        Spawn a new thread that watches for a new topic.
+
+        Parameters
+        ----------
+        topic: str
+            Topic to watch.
+        callback: Callable[dict, None]:
+            Callback function to execute when new data is available.
+        start_time: str (default="")
+            Timestamp to ignore previous events
+        """
+        if topic in self.watched_topics:
+            raise ValueError(f"Topic: {topic} already being watched")
+        self.watched_topics[topic] = callback
+
+        if self._exit_event.is_set():
+            self._exit_event.clear()
+            self._thread = threading.Thread(
+                        target=self._watch_thread,
+                        name="banners_watch_sql",
+                        args=("sql", callback, start_time),
+            )
+            self._thread.start()
+
+        with self._engine.connect() as con:
+            con.execute(text(f"LISTEN {topic};"))
+            con.commit()
+
     def _watch_thread(self, topic: str,
               callback: Callable[dict, None],
               start_time: str="") -> None:
@@ -207,13 +248,7 @@ class PostgresBanner(BaseBanner):
         start_time: str (default="")
             Timestamp to ignore previous events
         """
-        exit_event = self.watched_topics[topic]['event']
-
-        with self._engine.connect() as con:
-            con.execute(text(f"LISTEN {topic};"))
-            con.commit()
-
-        while topic in self.watched_topics and not exit_event.is_set():
+        while not self._exit_event.is_set():
             empty = ([],[],[])
             with self._engine.connect() as conn:
                 if not select.select(
@@ -222,7 +257,26 @@ class PostgresBanner(BaseBanner):
                     conn.connection.poll()
                     while conn.connection.notifies:
                         notify = conn.connection.notifies.pop(0)
-                        callback(self._get_event_by_id(notify.payload))
+                        if notify.channel in self.watched_topics:
+                            callback = self.watched_topics[notify.channel]
+                            callback(self._get_event_by_id(notify.payload))
+
+    def ignore(self, topic: str):
+        """Unsubscribe from a topic.
+
+        Parameters
+        ----------
+        topic: str
+            Topic to ignore.
+        """
+        if topic not in self.watched_topics:
+            return
+        self.watched_topics.pop(topic)
+        with self._engine.connect() as con:
+            con.execute(text(f"UNLISTEN {topic};"))
+            con.commit()
+        if not self.watched_topics: # If no more watched topics, kill thread
+            self._exit_event.set()
 
     def retire(self, topic: str, num_keep: int=None) -> None:
         """Delete old events in a given topic.

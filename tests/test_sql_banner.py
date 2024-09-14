@@ -35,7 +35,6 @@ def test_sql_engine_creation_fail(sql_table, remove_conn_string):
     assert "SQL_CONNECTION_STRING" not in os.environ
     if remove_conn_string:
         with pytest.raises(ValueError):
-            print("HERE")
             PostgresBanner(table_name=sql_table)
 
 def test_sql_engine_kwargs(sql_table, remove_conn_string):
