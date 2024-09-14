@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 import select
 from typing import Callable, Optional
 
@@ -23,20 +24,57 @@ class PostgresBanner(BaseBanner):
         """
         super().__init__(**kwargs)
         self.table_name = kwargs.get("table_name", "sql_banner")
-        # Parameterize this connection
-        self._engine = create_engine(URL.create(
-            drivername="postgresql",
-            username="postgres",
-            password="postgres",
-            host="jhub-postgresql",
-            database="postgres",
-        ))
+        self._engine = None
+        self._create_engine(**kwargs)
+
         self.banner_event = self._create_table(self.table_name)
 
     def __del__(self):
         """Destructor that kills DB connection."""
         super().__del__()
-        self._engine.dispose()
+        if self._engine:
+            self._engine.dispose()
+
+    def _create_engine(self, **kwargs):
+        """Create SQL Alchemy Engine.
+
+        The engine can be created by two inputs.
+        1) Inputting directly the connection parameters as kwargs
+        2) Using the environment variable SQL_CONNECTION_STRING
+
+        Parameters
+        ----------
+        **username: str (optional)
+            Username of PostgreSQL database
+        **password: str (optional)
+            Password of PostgreSQL database
+        **host: str (optional)
+            PostgreSQL database host
+        **database: str (optional)
+            PostgreSQL database
+        """
+        connection_params = ["username", "password",
+                             "host", "database"]
+        if all(x in kwargs for x in connection_params):
+            self._engine = create_engine(URL.create(
+                drivername="postgresql",
+                username=kwargs["username"],
+                password=kwargs["password"],
+                host=kwargs["host"],
+                database=kwargs["database"],
+                port=kwargs.get("port", 5432)
+            ))
+            return
+        if "SQL_CONNECTION_STRING" in os.environ:
+            self._engine = create_engine(
+                os.environ["SQL_CONNECTION_STRING"]
+            )
+            return
+        raise ValueError((
+            "SQL Engine could not be constructed. "
+            "Must provide connection params in kwargs, "
+            "or env variable SQL_CONNECTION_STRING."
+        ))
 
     def _create_table(self, table_name):
         """Create SQL Alchemy ORM tables and objects.
