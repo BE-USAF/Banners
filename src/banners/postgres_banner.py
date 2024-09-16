@@ -285,7 +285,10 @@ class PostgresBanner(BaseBanner):
             return
         self.watched_topics.pop(topic)
         with self._engine.connect() as con:
-            con.execute(text(f"UNLISTEN {topic};"))
+            con.execute(
+                text(sql.SQL("UNLISTEN {};").format(sql.Identifier(topic)
+                ).as_string(con.connection.cursor()))
+            )
             con.commit()
         if not self.watched_topics: # If no more watched topics, kill thread
             self._exit_event.set()
